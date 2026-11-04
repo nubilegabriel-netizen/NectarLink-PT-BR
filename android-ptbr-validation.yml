@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Android PT-BR - build de validação
+
+on:
+  push:
+    branches: [traducao-portugues-br]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Testes e APK Android (validação)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Instalar Rust e targets Android
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Instalar cargo-ndk
+        run: cargo install --locked cargo-ndk
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: "16111833"
+          packages: "platforms;android-37.0 ndk;30.0.16248370"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Testes, lint e compilação de validação
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nectarlink-android-debug-validacao
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
