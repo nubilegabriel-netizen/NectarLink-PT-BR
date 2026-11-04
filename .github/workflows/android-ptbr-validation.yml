@@ -3,47 +3,110 @@ name: Android PT-BR - build de validação
 
 on:
   push:
-    branches: [traducao-portugues-br]
+    paths:
+      - "android/app/src/main/res/values-pt-rBR/strings.xml"
+      - ".github/workflows/android-ptbr-validation.yml"
+  pull_request:
+    paths:
+      - "android/app/src/main/res/values-pt-rBR/strings.xml"
+      - ".github/workflows/android-ptbr-validation.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   android:
     name: Testes e APK Android (validação)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # Checkout 1: este repositório contém somente os arquivos de tradução
+      # e os workflows de integração.
+      - name: Baixar repositório de tradução
+        uses: actions/checkout@v7
 
-      - name: Instalar Rust e targets Android
+      # Checkout 2: código original completo do NectarLink.
+      # v0.1.5 corresponde à versão-base usada para preparar o catálogo PT-BR.
+      - name: Baixar código-fonte original do NectarLink
+        uses: actions/checkout@v7
+        with:
+          repository: thtbee/nectarlink
+          ref: v0.1.5
+          path: source
+
+      - name: Conferir arquivos esperados
+        shell: bash
         run: |
+          set -euo pipefail
+          test -f source/Cargo.toml
+          test -f source/android/gradlew
+          test -f source/android/app/build.gradle.kts
+          test -f android/app/src/main/res/values-pt-rBR/strings.xml
+
+      # Aplica o catálogo parcial dentro da árvore do código original.
+      - name: Aplicar tradução PT-BR ao código original
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source/android/app/src/main/res/values-pt-rBR
+          cp android/app/src/main/res/values-pt-rBR/strings.xml \
+             source/android/app/src/main/res/values-pt-rBR/strings.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("source/android/app/src/main/res/values-pt-rBR/strings.xml")
+          print("XML PT-BR válido.")
+          PY
+
+      - name: Instalar Rust e targets Android do projeto
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-linux-android x86_64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
+      # O cache é apontado explicitamente ao workspace que contém Cargo.toml.
+      - name: Cache de dependências Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            source -> target
 
       - name: Instalar cargo-ndk
+        working-directory: source
+        shell: bash
         run: cargo install --locked cargo-ndk
 
-      - uses: actions/setup-java@v6
+      - name: Configurar Java
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v4
+      - name: Configurar Android SDK e NDK
+        uses: android-actions/setup-android@v4
         with:
           cmdline-tools-version: "16111833"
-          packages: "platforms;android-37.0 ndk;30.0.16248370"
+          packages: "platforms;android-37.0 ndk;30.0.16248370 build-tools;37.0.0"
 
-      - uses: gradle/actions/setup-gradle@v6
+      - name: Configurar cache Gradle
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Testes, lint e compilação de validação
-        working-directory: android
-        run: ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+        working-directory: source/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
 
-      - uses: actions/upload-artifact@v7
+      - name: Publicar APK de validação
+        uses: actions/upload-artifact@v7
         with:
           name: nectarlink-android-debug-validacao
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: source/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 14
