@@ -267,7 +267,6 @@
     <string name="update_check_failed">Não foi possível verificar as atualizações. Confira sua conexão com a internet.</string>
     <string name="action_lock_pc">Bloquear computador</string>
     <string name="action_sleep_pc">Suspender</string>
-    <string name="action_wake">Ativar</string>
     <string name="action_disconnect">Desconectar</string>
     <string name="action_stop_reconnecting">Parar de tentar reconectar</string>
     <string name="action_reconnect">Reconectar</string>
