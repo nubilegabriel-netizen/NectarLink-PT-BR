@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Android PT-BR - APK de prévia
+
+on:
+  push:
+    paths:
+      - "android/app/src/main/res/values-pt-rBR/strings.xml"
+      - "android/app/src/main/res/xml/locales_config.xml"
+      - "android/app/src/main/kotlin/app/nectarlink/android/ui/AppLanguage.kt"
+      - ".github/workflows/android-ptbr-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  android-preview:
+    name: Gerar APK de prévia PT-BR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório de tradução
+        uses: actions/checkout@v7
+
+      - name: Checkout do código original
+        uses: actions/checkout@v7
+        with:
+          repository: thtbee/nectarlink
+          ref: main
+          path: source
+
+      - name: Copiar arquivos PT-BR para o código original
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -D android/app/src/main/res/values-pt-rBR/strings.xml \
+            source/android/app/src/main/res/values-pt-rBR/strings.xml
+          install -D android/app/src/main/res/xml/locales_config.xml \
+            source/android/app/src/main/res/xml/locales_config.xml
+          install -D android/app/src/main/kotlin/app/nectarlink/android/ui/AppLanguage.kt \
+            source/android/app/src/main/kotlin/app/nectarlink/android/ui/AppLanguage.kt
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("source/android/app/src/main/res/values-pt-rBR/strings.xml")
+          ET.parse("source/android/app/src/main/res/xml/locales_config.xml")
+          print("Arquivos XML válidos.")
+          PY
+
+      - name: Instalar Rust e targets Android
+        working-directory: source
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android x86_64-linux-android
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            source -> target
+
+      - name: Instalar cargo-ndk
+        working-directory: source
+        run: cargo install --locked cargo-ndk
+
+      - name: Configurar Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configurar Android SDK e NDK
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: "16111833"
+          packages: "platforms;android-37.0 ndk;30.0.16248370"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Preview only: LocalesTest is intentionally not run because it requires
+      # every English string and plural to be translated before offering pt-BR.
+      - name: Lint e compilação do APK de prévia
+        working-directory: source/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon lintDebug assembleDebug
+
+      - name: Publicar APK de prévia
+        uses: actions/upload-artifact@v7
+        with:
+          name: nectarlink-android-ptbr-preview
+          path: source/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
