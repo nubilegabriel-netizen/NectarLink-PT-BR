@@ -23,21 +23,20 @@ jobs:
     name: Testes e APK Android (validação)
     runs-on: ubuntu-latest
     steps:
-      # Checkout 1: este repositório contém somente os arquivos de tradução
-      # e os workflows de integração.
+      # Primeiro checkout: repositório NectarLink-PT-BR (tradução e workflow).
       - name: Baixar repositório de tradução
         uses: actions/checkout@v7
 
-      # Checkout 2: código original completo do NectarLink.
-      # v0.1.5 corresponde à versão-base usada para preparar o catálogo PT-BR.
+      # Segundo checkout: código original. A branch main existe no upstream.
+      # Não usar v0.1.5: essa tag está ausente no upstream.
       - name: Baixar código-fonte original do NectarLink
         uses: actions/checkout@v7
         with:
           repository: thtbee/nectarlink
-          ref: v0.1.5
+          ref: main
           path: source
 
-      - name: Conferir arquivos esperados
+      - name: Conferir estrutura do código original e tradução
         shell: bash
         run: |
           set -euo pipefail
@@ -46,8 +45,7 @@ jobs:
           test -f source/android/app/build.gradle.kts
           test -f android/app/src/main/res/values-pt-rBR/strings.xml
 
-      # Aplica o catálogo parcial dentro da árvore do código original.
-      - name: Aplicar tradução PT-BR ao código original
+      - name: Copiar tradução PT-BR para o código original
         shell: bash
         run: |
           set -euo pipefail
@@ -60,7 +58,7 @@ jobs:
           print("XML PT-BR válido.")
           PY
 
-      - name: Instalar Rust e targets Android do projeto
+      - name: Instalar toolchain Rust fixada pelo projeto e targets Android
         working-directory: source
         shell: bash
         run: |
@@ -68,7 +66,7 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-linux-android x86_64-linux-android
 
-      # O cache é apontado explicitamente ao workspace que contém Cargo.toml.
+      # O Rust workspace está em source/Cargo.toml, não na raiz do repositório de tradução.
       - name: Cache de dependências Rust
         uses: Swatinem/rust-cache@v2
         with:
@@ -77,7 +75,6 @@ jobs:
 
       - name: Instalar cargo-ndk
         working-directory: source
-        shell: bash
         run: cargo install --locked cargo-ndk
 
       - name: Configurar Java
@@ -89,13 +86,14 @@ jobs:
       - name: Configurar Android SDK e NDK
         uses: android-actions/setup-android@v4
         with:
+          # Mesmo conjunto de versões usado pelo CI oficial do NectarLink.
           cmdline-tools-version: "16111833"
-          packages: "platforms;android-37.0 ndk;30.0.16248370 build-tools;37.0.0"
+          packages: "platforms;android-37.0 ndk;30.0.16248370"
 
       - name: Configurar cache Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Testes, lint e compilação de validação
+      - name: Testes, lint e compilação APK de depuração
         working-directory: source/android
         shell: bash
         run: |
